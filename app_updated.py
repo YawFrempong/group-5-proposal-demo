@@ -10,17 +10,16 @@ from dash.dependencies import Input, Output
 from statistics import mean
 
 app = dash.Dash(__name__)
-
-#load data
-first_run = True
-state_idx = 0
-df = pd.read_csv("FMAC-HPI.csv")
 states = ['AK','AL','AR','AZ','CA','CO','CT','DC','DE','FL','GA','HI','IA','ID','IL','IN','KS','KY','LA','MA','MD','ME','MI','MN','MO','MS','MT','NC','ND','NE','NH','NJ','NM','NV','NY','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VA','VT','WA','WI','WV','WY']
-main_dict = dict()
+
+#Load Data - Quandl, Freddie Mac Housing Price Index
+state_idx = 0
+df_Freddie = pd.read_csv("FMAC-HPI.csv")
+main_dict_Freddie = dict()
 
 for state in states:
     group_by_date = dict()
-    for index, row in df.iterrows():
+    for index, row in df_Freddie.iterrows():
         val = row[state]
         date = row['Date'][:4]
 
@@ -36,13 +35,16 @@ for state in states:
         arr = group_by_date[key]
         group_by_date[key] = mean(arr)
 
-    main_dict[state] = group_by_date
+    main_dict_Freddie[state] = group_by_date
 
 
 
 # choropleth map
 app.layout = html.Div([
     html.H1("The Effect of COVID-19 on Housing Index Prices in the US", style={'text-align': 'center'}),
+    html.Div(id='output_container', children=[]),
+    html.Br(),
+    dcc.Graph(id='choropleth_graph', figure={}),
     dcc.Slider(id="slct_year", min=1975, max=2017, step=1, value=2008,
         marks={
             1975: "1975",
@@ -90,9 +92,14 @@ app.layout = html.Div([
             2017: "2017"
         }
     ),
-    html.Div(id='output_container', children=[]),
+    dcc.Graph(id='line_graph', children=[]),
+    html.I("Enter State Code"),
     html.Br(),
-    dcc.Graph(id='my_graph', figure={})
+    dcc.Input(
+        id="slct_state",
+        type='text',
+        value='AZ'
+    )
 ])
 
 
@@ -101,19 +108,22 @@ app.layout = html.Div([
 # Interactive callbacks
 
 #Given an input(year) update the output page components
+
 @app.callback(
     [Output(component_id='output_container', component_property='children'),
-     Output(component_id='my_graph', component_property='figure')],
-    [Input(component_id='slct_year', component_property='value')]
+     Output(component_id='choropleth_graph', component_property='figure'),
+     Output(component_id='line_graph', component_property='figure')],
+    [Input(component_id='slct_year', component_property='value'), Input(component_id='slct_state', component_property='value')]
 )
-def update_graph(selected_year):
+
+def update_graph(selected_year, state_str):
 
     container = ""
     dff = pd.DataFrame()
     state_code_arr = []
     hpi_arr = []
-    for key in main_dict:
-        selected_state = main_dict[key]
+    for key in main_dict_Freddie:
+        selected_state = main_dict_Freddie[key]
         selected_hpi = selected_state[str(selected_year)]
         state_code_arr.append(key)
         hpi_arr.append(selected_hpi)
@@ -122,6 +132,8 @@ def update_graph(selected_year):
     dff['Housing Price Index'] = hpi_arr
 
     # Plotly Express
+    my_color_scale = ["yellow", "orange", "red", "pink", "purple", "#19D3F3", "blue", "#00CC96", "green", "#16FF32"]
+
     fig = px.choropleth(
         data_frame=dff,
         locationmode='USA-states',
@@ -129,70 +141,37 @@ def update_graph(selected_year):
         scope="usa",
         color='Housing Price Index',   #numerical value in dataframe to determine hue
         hover_data=['state_code', 'Housing Price Index'],
-        color_continuous_scale=["yellow", "orange", "red", "pink", "purple", "#19D3F3", "blue", "#00CC96", "green", "#16FF32"],
+        color_continuous_scale=my_color_scale,
         labels={'Housing Price Index': 'Housing Price Index'},
         template='plotly_dark',
         range_color=[0,400]
     )
- 
+    
+    df_line = pd.DataFrame()
+    df_line['Year'] = []
+    df_line['Housing Price Index'] = []
+    title_str = 'Housing Price Index History in ' + state_str
+    fig_2 = px.line(df_line, x="Year", y="Housing Price Index", title=title_str)
+    
+    if state_str.upper() in states:
+        state_years = []
+        state_HPIs = []
+        local_dict = main_dict_Freddie[state_str.upper()]
+
+        for key in local_dict:
+            state_years.append(key)
+            state_HPIs.append(local_dict[key])
+        
+        state_years.reverse()
+        state_HPIs.reverse()
+        df_line['Year'] = state_years
+        df_line['Housing Price Index'] = state_HPIs
+        fig_2 = px.line(df_line, x="Year", y="Housing Price Index", title=title_str)
+
     #returns to the [output, output,....] in @app.callback()
-    return container, fig
+    return container, fig, fig_2
 
 
 # ------------------------------------------------------------------------------
 if __name__ == '__main__':
     app.run_server(debug=True)
-
-
-
-'''
-    dcc.Dropdown(id="slct_year",
-                 options=[
-                     {"label": "1975", "value": 1975},
-                     {"label": "1976", "value": 1976},
-                     {"label": "1977", "value": 1977},
-                     {"label": "1978", "value": 1978},
-                     {"label": "1979", "value": 1979},
-                     {"label": "1980", "value": 1980},
-                     {"label": "1981", "value": 1981},
-                     {"label": "1982", "value": 1982},
-                     {"label": "1983", "value": 1983},
-                     {"label": "1984", "value": 1984},
-                     {"label": "1985", "value": 1985},
-                     {"label": "1986", "value": 1986},
-                     {"label": "1987", "value": 1987},
-                     {"label": "1988", "value": 1988},
-                     {"label": "1989", "value": 1989},
-                     {"label": "1990", "value": 1990},
-                     {"label": "1991", "value": 1991},
-                     {"label": "1992", "value": 1992},
-                     {"label": "1993", "value": 1993},
-                     {"label": "1994", "value": 1994},
-                     {"label": "1995", "value": 1995},
-                     {"label": "1996", "value": 1996},
-                     {"label": "1997", "value": 1997},
-                     {"label": "1998", "value": 1998},
-                     {"label": "1999", "value": 1999},
-                     {"label": "2000", "value": 2000},
-                     {"label": "2001", "value": 2001},
-                     {"label": "2002", "value": 2002},
-                     {"label": "2003", "value": 2003},
-                     {"label": "2004", "value": 2004},
-                     {"label": "2005", "value": 2005},
-                     {"label": "2006", "value": 2006},
-                     {"label": "2007", "value": 2007},
-                     {"label": "2008", "value": 2008},
-                     {"label": "2009", "value": 2009},
-                     {"label": "2010", "value": 2010},
-                     {"label": "2011", "value": 2011},
-                     {"label": "2012", "value": 2012},
-                     {"label": "2013", "value": 2013},
-                     {"label": "2014", "value": 2014},
-                     {"label": "2015", "value": 2015},
-                     {"label": "2016", "value": 2016},
-                     {"label": "2017", "value": 2017}],
-                 multi=False,
-                 value=2009,
-                 style={'width': "40%"}
-                 ),
-    '''
