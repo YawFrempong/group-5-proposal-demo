@@ -21,51 +21,27 @@ main_dict = {}
 for index, row in dfa.iterrows():
     values = row.values
     state_name = values[1]
-    cur_vals = values[2:]
+    cur_row = values[2:]
     if state_name not in main_dict.keys():
         main_dict[state_name] = {}
         for i, year in enumerate(year_val, 0):
             if year not in main_dict[state_name].keys():
                 main_dict[state_name][year] = {}
-            main_dict[state_name][year] = cur_vals[i]
+            main_dict[state_name][year] = cur_row[i]
 
-print(main_dict)
+options_list = []
+for year in year_val:
+    options_list.append({"label": str(year), "value": year})
 
 
 app.layout = html.Div([
 
-    html.H1("Rental prices from years 1996 to 2021", style={'text-align': 'center'}),
+    html.H1("Rental prices from years "+str(year_val[0])+" to " + str(year_val[-1]), style={'text-align': 'center'}),
 
     dcc.Dropdown(id="select_year",
-                 options=[
-                     {"label": "1996", "value": 1996},
-                     {"label": "1997", "value": 1997},
-                     {"label": "1998", "value": 1998},
-                     {"label": "1999", "value": 1999},
-                     {"label": "2000", "value": 2000},
-                     {"label": "2001", "value": 2001},
-                     {"label": "2002", "value": 2002},
-                     {"label": "2003", "value": 2003},
-                     {"label": "2004", "value": 2004},
-                     {"label": "2005", "value": 2005},
-                     {"label": "2006", "value": 2006},
-                     {"label": "2007", "value": 2007},
-                     {"label": "2008", "value": 2008},
-                     {"label": "2009", "value": 2009},
-                     {"label": "2010", "value": 2010},
-                     {"label": "2011", "value": 2011},
-                     {"label": "2012", "value": 2012},
-                     {"label": "2013", "value": 2013},
-                     {"label": "2014", "value": 2014},
-                     {"label": "2015", "value": 2015},
-                     {"label": "2016", "value": 2016},
-                     {"label": "2017", "value": 2017},
-                     {"label": "2018", "value": 2018},
-                     {"label": "2019", "value": 2019},
-                     {"label": "2020", "value": 2020},
-                     {"label": "2021", "value": 2021}],
+                 options=options_list,
                  multi=False,
-                 value=1996,
+                 value=year_val[0],
                  style={'width': "40%"}
                  ),
 
