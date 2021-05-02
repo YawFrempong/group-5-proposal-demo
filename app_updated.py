@@ -1,5 +1,6 @@
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 import dash
 import dash_core_components as dcc
@@ -8,6 +9,7 @@ from dash.dependencies import Input, Output
 
 from urllib.request import urlopen
 from statistics import mean
+import numpy as np
 import json
 
 with urlopen('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json') as response:
@@ -16,13 +18,17 @@ with urlopen('https://raw.githubusercontent.com/plotly/datasets/master/geojson-c
 app = dash.Dash(__name__)
 server = app.server
 
-radio_options = [{'label': 'View States', 'value': 'States'}, {'label': 'View Counties', 'value': 'Counties'}]
+radio_options = [{'label': 'View States', 'value': 'States'}, {'label': 'View Counties', 'value': 'Counties'},
+                 {'label': 'View Cities', 'value': 'Cities'}]
 states = ['AK', 'AL', 'AR', 'AZ', 'CA', 'CO', 'CT', 'DC', 'DE', 'FL', 'GA', 'HI', 'IA', 'ID', 'IL', 'IN', 'KS', 'KY',
           'LA', 'MA', 'MD', 'ME', 'MI', 'MN', 'MO', 'MS', 'MT', 'NC', 'ND', 'NE', 'NH', 'NJ', 'NM', 'NV', 'NY', 'OH',
           'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VA', 'VT', 'WA', 'WI', 'WV', 'WY']
 my_color_scale = ["yellow", "orange", "red", "pink", "purple", "#19D3F3", "blue", "#00CC96", "green", "#16FF32"]
+first_load = True
+new_dff_ZHVI_cities = pd.DataFrame()
+prev_year = -1
 
-# Load Data - Zillow Home Value Index of Single Family Homes--------------------------------------------------------------------------------------------------------
+# Load Data - Zillow Home Value Index for Single Family Homes--------------------------------------------------------------------------------------------------------
 df_ZHVI = pd.read_csv("single_family_home_ZHVI.csv")
 main_dict_ZHVI = {}
 
@@ -82,7 +88,41 @@ for index, row in df_ZHVI_county.iterrows():
             year += 1
 
     main_dict_ZHVI_county[fip][str(year)] = val_2021
+# Load Data - Zillow Home Value Index for Single Family Homes(City)--------------------------------------------------------------------------------------------------------
+df_city = pd.read_csv('./us_cities_lat_long.csv', usecols=['CITY', 'LATITUDE', 'LONGITUDE'])
+city_to_coor = {}
 
+for index, row in df_city.iterrows():
+    arr = row.tolist()
+    city = arr[0]
+    coordinate = [arr[1], arr[2]]
+    city_to_coor[city] = coordinate
+
+df_ZHVI_city = pd.read_csv("single_family_home_ZHVI_city.csv")
+cities_ZHVI = df_ZHVI_city['RegionName'].to_list()
+main_dict_ZHVI_city = {}
+
+for city in cities_ZHVI:
+    main_dict_ZHVI_city[city] = {}
+
+for index, row in df_ZHVI_city.iterrows():
+    arr = row.tolist()
+    city = arr[2]
+    dates = arr[8:-3]
+    arr_2021 = arr[-3:]
+    val_2021 = mean(arr_2021)
+
+    year = 1996
+    dates_temp = []
+    for i in range(len(dates)):
+        dates_temp.append(dates[i])
+
+        if len(dates_temp) == 12 or i == (len(dates) - 1):
+            main_dict_ZHVI_city[city][str(year)] = mean(dates_temp)
+            dates_temp = []
+            year += 1
+
+    main_dict_ZHVI_city[city][str(year)] = val_2021
 # Load Data - Quandl, Freddie Mac Housing Price Index--------------------------------------------------------------------------------------------------------
 df_Freddie = pd.read_csv("FMAC-HPI.csv")
 main_dict_Freddie = dict()
@@ -115,8 +155,9 @@ def update_page_layout():
         dcc.Dropdown(id='slct_dataset',
                      options=[
                          {'label': 'Freddie Mac House Price Index (1975 - 2017) *States Only*', 'value': 'FMAC'},
-                         {'label': 'Zillow Home Value Index - Single Family Homes (1996 - 2021) *States & Counties*',
-                          'value': 'ZHVI'},
+                         {
+                             'label': 'Zillow Home Value Index - Single Family Homes (1996 - 2021) *States, Counties, & Cities*',
+                             'value': 'ZHVI'},
                          {'label': 'Zillow Observed Rent Index (1996 - 2021)', 'value': 'ZORI'},
                          {
                              'label': 'Zillow For-Sale Inventory vs Newly Pending Listings vs Days to Pending - Single Family Homes (1996 - 2021)',
@@ -187,7 +228,7 @@ def update_page_layout():
                    }
                    ),
         dcc.Graph(id='line_graph', children=[]),
-        html.I("Enter State/FIP Code"),
+        html.I("Enter State Code/County FIP Code/Cities Name"),
         html.Br(),
         dcc.Input(
             id="slct_state",
@@ -361,6 +402,85 @@ def page_3(selected_year, fip_str):
     return container, fig, fig_2
 
 
+def page_4(selected_year, city_str):
+    global first_load
+    global new_dff_ZHVI_cities
+    global prev_year
+
+    container = ""
+    dff = pd.DataFrame()
+    city_code_arr = []
+    hpi_arr = []
+
+    for key in main_dict_ZHVI_city:
+        selected_city = main_dict_ZHVI_city[key]
+        selected_hpi = selected_city[str(selected_year)]
+        city_code_arr.append(key)
+        hpi_arr.append(selected_hpi)
+
+    dff['city'] = city_code_arr
+    dff['Home Value Index'] = hpi_arr
+
+    if first_load or selected_year != prev_year:
+        new_dff_ZHVI_cities = pd.DataFrame()
+        prev_year = selected_year
+        first_load = False
+        for index, row in dff.iterrows():
+            temp_city = row['city']
+
+            if city_to_coor.get(temp_city) and not np.isnan(row['Home Value Index']):
+                temp_lat = city_to_coor[temp_city][0]
+                temp_long = city_to_coor[temp_city][1]
+                temp_city_info = row['city'] + ' - Home Value Index: ' + str(row['Home Value Index'])
+                new_dff_ZHVI_cities = new_dff_ZHVI_cities.append(
+                    {'city': temp_city_info, 'Home Value Index': row['Home Value Index'], 'lat': temp_lat,
+                     'long': temp_long}, ignore_index=True)
+
+    new_dff_ZHVI_cities.sort_values('Home Value Index', ascending=False)
+
+    limits = [(0, 2800), (2801, 5600), (5601, 8400), (8401, 11200), (11201, 14000)]
+    colors = ["purple", "royalblue", "lightseagreen", "orange", "yellow"]
+    scale = 25000
+
+    fig = go.Figure()
+
+    for i in range(len(limits)):
+        lim = limits[i]
+        new_dff_sub = new_dff_ZHVI_cities[lim[0]:lim[1]]
+
+        fig.add_trace(go.Scattergeo(
+            locationmode='USA-states',
+            lat=new_dff_sub['lat'],
+            lon=new_dff_sub['long'],
+            text=new_dff_sub['city'],
+            marker=dict(size=new_dff_sub['Home Value Index'] / scale, color=colors[i], line_color='rgb(40,40,40)',
+                        line_width=0.5, sizemode='area'),
+            name='{0} - {1}'.format(lim[0], lim[1])))
+
+    fig.update_layout(title_text='Demo', showlegend=True, geo=dict(scope='usa', landcolor='rgb(217, 217, 217)', ))
+
+    df_line = pd.DataFrame()
+    df_line['Year'] = []
+    df_line['Home Value Index'] = []
+    title_str = 'Home Value Index History in ' + city_str
+    fig_2 = px.line(df_line, x="Year", y="Home Value Index", title=title_str)
+
+    if city_str in main_dict_ZHVI_city.keys():
+        county_years = []
+        county_HPIs = []
+        local_dict = main_dict_ZHVI_city[city_str]
+
+        for key in local_dict:
+            county_years.append(key)
+            county_HPIs.append(local_dict[key])
+
+        df_line['Year'] = county_years
+        df_line['Housing Price Index'] = county_HPIs
+        fig_2 = px.line(df_line, x="Year", y="Housing Price Index", title=title_str)
+
+    return container, fig, fig_2
+
+
 # ------------------------------------------------------------------------------
 
 app.layout = update_page_layout
@@ -386,6 +506,8 @@ def update_graph(selected_year, state_str, selected_dataset, selected_view):
             return page_2(selected_year, state_str)
         elif selected_view == 'Counties':
             return page_3(selected_year, state_str)
+        elif selected_view == 'Cities':
+            return page_4(selected_year, state_str)
     elif selected_dataset == 'ZORI':
         return page_1(selected_year, state_str)
     elif selected_dataset == 'SALES':
